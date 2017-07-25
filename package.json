@@ -1,0 +1,18 @@
+{
+  "name": "laya",
+  "version": "0.0.1",
+  "description": "project using layabox build by webpack",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "layabox",
+    "webpack"
+  ],
+  "author": "meddkim",
+  "license": "ISC",
+  "devDependencies": {
+    "webpack": "^3.1.0"
+  }
+}
