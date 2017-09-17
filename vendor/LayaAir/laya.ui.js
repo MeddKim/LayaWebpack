@@ -7,10 +7,10 @@
 	var Graphics=laya.display.Graphics,Handler=laya.utils.Handler,Input=laya.display.Input,Loader=laya.net.Loader;
 	var Node=laya.display.Node,Point=laya.maths.Point,Rectangle=laya.maths.Rectangle,Render=laya.renders.Render;
 	var Sprite=laya.display.Sprite,Text=laya.display.Text,Texture=laya.resource.Texture,Tween=laya.utils.Tween;
-	var Utils=laya.utils.Utils;
+	var Utils=laya.utils.Utils,WeakObject=laya.utils.WeakObject;
 	Laya.interface('laya.ui.IItem');
-	Laya.interface('laya.ui.IRender');
 	Laya.interface('laya.ui.ISelect');
+	Laya.interface('laya.ui.IRender');
 	Laya.interface('laya.ui.IComponent');
 	Laya.interface('laya.ui.IBox','IComponent');
 	/**
@@ -176,7 +176,6 @@
 		*修改纹理资源。
 		*/
 		__proto.changeSource=function(){
-			if (AutoBitmap.cacheCount++> 50)AutoBitmap.clearCache();
 			this._isChanged=false;
 			var source=this._source;
 			if (!source || !source.bitmap)return;
@@ -190,8 +189,8 @@
 				}else {
 				source.$_GID || (source.$_GID=Utils.getGID());
 				var key=source.$_GID+"."+width+"."+height+"."+sizeGrid.join(".");
-				if (AutoBitmap.cmdCaches[key]){
-					this.cmds=AutoBitmap.cmdCaches[key];
+				if (WeakObject.I.get(key)){
+					this.cmds=WeakObject.I.get(key);
 					return;
 				}
 				this.clear();
@@ -220,7 +219,7 @@
 				right && this.drawBitmap(repeat,AutoBitmap.getTexture(source,sw-right,top,right,sh-top-bottom),width-right,top,right,height-top-bottom);
 				this.drawBitmap(repeat,AutoBitmap.getTexture(source,left,top,sw-left-right,sh-top-bottom),left,top,width-left-right,height-top-bottom);
 				if (needClip)this.restore();
-				if (this.autoCacheCmd && !Render.isConchApp)AutoBitmap.cmdCaches[key]=this.cmds;
+				if (this.autoCacheCmd && !Render.isConchApp)WeakObject.I.set(key,this.cmds);
 			}
 			this._repaint();
 		}
@@ -229,7 +228,7 @@
 			(width===void 0)&& (width=0);
 			(height===void 0)&& (height=0);
 			if (width < 0.1 || height < 0.1)return;
-			if (repeat && (tex.width!=width || tex.height !=height))this.fillTexture(tex,x,y,width,height);
+			if (repeat && (tex.width !=width || tex.height !=height))this.fillTexture(tex,x,y,width,height);
 			else this.drawTexture(tex,x,y,width,height);
 		}
 
@@ -321,31 +320,14 @@
 			if (height <=0)height=1;
 			tex.$_GID || (tex.$_GID=Utils.getGID())
 			var key=tex.$_GID+"."+x+"."+y+"."+width+"."+height;
-			var texture=AutoBitmap.textureCache[key];
+			var texture=WeakObject.I.get(key);
 			if (!texture){
-				texture=AutoBitmap.textureCache[key]=Texture.createFromTexture(tex,x,y,width,height);
+				texture=Texture.createFromTexture(tex,x,y,width,height);
+				WeakObject.I.set(key,texture);
 			}
 			return texture;
 		}
 
-		AutoBitmap.clearCache=function(){
-			AutoBitmap.cacheCount=0;
-			AutoBitmap.cmdCaches={};
-			AutoBitmap.textureCache={};
-		}
-
-		AutoBitmap.setCache=function(key,value){
-			AutoBitmap.cacheCount++;
-			AutoBitmap.textureCache[key]=value;
-		}
-
-		AutoBitmap.getCache=function(key){
-			return AutoBitmap.textureCache[key];
-		}
-
-		AutoBitmap.cmdCaches={};
-		AutoBitmap.cacheCount=0;
-		AutoBitmap.textureCache={};
 		return AutoBitmap;
 	})(Graphics)
 
@@ -928,7 +910,7 @@
 		*/
 		__proto.open=function(dialog,closeOther){
 			(closeOther===void 0)&& (closeOther=false);
-			if (closeOther)this.removeChildren();
+			if (closeOther)this._closeAll();
 			if (dialog.popupCenter)this._centerDialog(dialog);
 			this.addChild(dialog);
 			if (dialog.isModal || this._$P["hasZorder"])this.timer.callLater(this,this._checkMask);
@@ -983,8 +965,18 @@
 		*关闭所有的对话框。
 		*/
 		__proto.closeAll=function(){
-			this.removeChildren();
+			this._closeAll();
 			this.event(/*laya.events.Event.CLOSE*/"close");
+		}
+
+		/**@private */
+		__proto._closeAll=function(){
+			for (var i=this.numChildren-1;i >-1;i--){
+				var item=this.getChildAt(i);
+				if (item.close!=null){
+					this.doClose(item);
+				}
+			}
 		}
 
 		/**
@@ -1229,7 +1221,7 @@
 			var height=img.sourceHeight / this._stateNum;
 			img.$_GID || (img.$_GID=Utils.getGID());
 			var key=img.$_GID+"-"+this._stateNum;
-			var clips=AutoBitmap.getCache(key);
+			var clips=WeakObject.I.get(key);
 			if (clips)this._sources=clips;
 			else {
 				this._sources=[];
@@ -1240,7 +1232,7 @@
 						this._sources.push(Texture.createFromTexture(img,0,height *i,width,height));
 					}
 				}
-				AutoBitmap.setCache(key,this._sources);
+				WeakObject.I.set(key,this._sources);
 			}
 			if (this._autoSize){
 				this._bitmap.width=this._width || width;
@@ -1352,6 +1344,9 @@
 		__getset(0,__proto,'stateNum',function(){
 			return this._stateNum;
 			},function(value){
+			if ((typeof value=='string')){
+				value=parseInt(value);
+			}
 			if (this._stateNum !=value){
 				this._stateNum=value < 1 ? 1 :value > 3 ? 3 :value;
 				this.callLater(this.changeClips);
@@ -1733,7 +1728,7 @@
 				var w=this._clipWidth || Math.ceil(img.sourceWidth / this._clipX);
 				var h=this._clipHeight || Math.ceil(img.sourceHeight / this._clipY);
 				var key=this._skin+w+h;
-				var clips=AutoBitmap.getCache(key);
+				var clips=WeakObject.I.get(key);
 				if (clips)this._sources=clips;
 				else {
 					this._sources=[];
@@ -1742,7 +1737,7 @@
 							this._sources.push(Texture.createFromTexture(img,w *j,h *i,w,h));
 						}
 					}
-					AutoBitmap.setCache(key,this._sources);
+					WeakObject.I.set(key,this._sources);
 				}
 				this.index=this._index;
 				this.event(/*laya.events.Event.LOADED*/"loaded");
@@ -3380,6 +3375,7 @@
 			this._ty=Laya.stage.mouseY;
 			Laya.stage.on(/*laya.events.Event.MOUSE_MOVE*/"mousemove",this,this.mouseMove);
 			Laya.stage.once(/*laya.events.Event.MOUSE_UP*/"mouseup",this,this.mouseUp);
+			Laya.stage.once(/*laya.events.Event.MOUSE_OUT*/"mouseout",this,this.mouseUp);
 			this.showValueText();
 		}
 
@@ -3415,6 +3411,8 @@
 		*/
 		__proto.mouseUp=function(e){
 			Laya.stage.off(/*laya.events.Event.MOUSE_MOVE*/"mousemove",this,this.mouseMove);
+			Laya.stage.off(/*laya.events.Event.MOUSE_UP*/"mouseup",this,this.mouseUp);
+			Laya.stage.off(/*laya.events.Event.MOUSE_OUT*/"mouseout",this,this.mouseUp);
 			this.sendChangeEvent(/*laya.events.Event.CHANGED*/"changed");
 			this.hideValueText();
 		}
@@ -3599,6 +3597,7 @@
 			},function(value){
 			this._bg.sizeGrid=value;
 			this._bar.sizeGrid=value;
+			if (this._progress)this._progress.sizeGrid=this._bar.sizeGrid;
 		});
 
 		/**
@@ -4033,6 +4032,7 @@
 					value=UIUtils.adptString(value+"");
 				this._tf.text=value;
 				this.event(/*laya.events.Event.CHANGE*/"change");
+				if (!this._width || !this._height)this.onCompResize();
 			}
 		});
 
@@ -5023,11 +5023,11 @@
 			if (!texture)return;
 			var isHorizontal=(this._direction==="horizontal");
 			if (isHorizontal){
-				this._wordsW=this._valueArr.length *(texture.width+this.spaceX);
-				this._wordsH=texture.height;
+				this._wordsW=this._valueArr.length *(texture.sourceWidth+this.spaceX);
+				this._wordsH=texture.sourceHeight;
 				}else{
-				this._wordsW=texture.width;
-				this._wordsH=(texture.height+this.spaceY)*this._valueArr.length;
+				this._wordsW=texture.sourceWidth;
+				this._wordsH=(texture.sourceHeight+this.spaceY)*this._valueArr.length;
 			};
 			var dX=0;
 			if (this._width){
@@ -5046,8 +5046,8 @@
 				var index=this._indexMap[this._valueArr.charAt(i)];
 				if (!this.sources[index])continue ;
 				texture=this.sources[index];
-				if (isHorizontal)this.graphics.drawTexture(texture,dX+i *(texture.width+this.spaceX),0,texture.width,texture.height);
-				else this.graphics.drawTexture(texture,0+dX,i *(texture.height+this.spaceY),texture.width,texture.height);
+				if (isHorizontal)this.graphics.drawTexture(texture,dX+i *(texture.sourceWidth+this.spaceX),0,texture.sourceWidth,texture.sourceHeight);
+				else this.graphics.drawTexture(texture,0+dX,i *(texture.sourceHeight+this.spaceY),texture.sourceWidth,texture.sourceHeight);
 			}
 			if (!this._width){
 				this.resetLayoutX();
@@ -5403,6 +5403,7 @@
 			if (this._cells.length===0){
 				var item=this.createItem();
 				this._offset.setTo(item.x,item.y);
+				if (this.cacheContent)return item;
 				this._cells.push(item);
 			}
 			return this._cells[0];
@@ -5420,17 +5421,18 @@
 				this._content.addChild(cacheBox);
 				this._content.optimizeScrollRect=true;
 				box=cacheBox;
-			};
-			var arr=[];
-			for (var i=this._cells.length-1;i >-1;i--){
-				var item=this._cells[i];
-				item.removeSelf();
-				arr.push(item);
+				}else {
+				var arr=[];
+				for (var i=this._cells.length-1;i >-1;i--){
+					var item=this._cells[i];
+					item.removeSelf();
+					arr.push(item);
+				}
+				this._cells.length=0;
 			}
-			this._cells.length=0;
 			for (var k=startY;k < numY;k++){
 				for (var l=0;l < numX;l++){
-					if (arr.length){
+					if (arr && arr.length){
 						cell=arr.pop();
 						}else {
 						cell=this.createItem();
@@ -5493,7 +5495,7 @@
 		__proto.setContentSize=function(width,height){
 			this._content.width=width;
 			this._content.height=height;
-			if (this._scrollBar||this._offset.x!=0||this._offset.y!=0){
+			if (this._scrollBar || this._offset.x !=0 || this._offset.y !=0){
 				this._content.scrollRect || (this._content.scrollRect=new Rectangle());
 				this._content.scrollRect.setTo(-this._offset.x,-this._offset.y,width,height);
 				this._content.conchModel && this._content.conchModel.scrollRect(-this._offset.x,-this._offset.y,width,height);
@@ -5586,8 +5588,8 @@
 				num=(lineY+1);
 				if (this._createdLine-scrollLine < num){
 					this._createItems(this._createdLine,lineX,this._createdLine+num);
-					this._createdLine+=num;
 					this.renderItems(this._createdLine *lineX,0);
+					this._createdLine+=num;
 				}
 			};
 			var r=this._content.scrollRect;
@@ -5639,7 +5641,7 @@
 		*@param index 单元格索引。
 		*/
 		__proto.renderItem=function(cell,index){
-			if (this._array&&index >=0 && index < this._array.length){
+			if (this._array && index >=0 && index < this._array.length){
 				cell.visible=true;
 				cell.dataSource=this._array[index];
 				if (!this.cacheContent){
@@ -8580,7 +8582,7 @@
 
 
 	/**
-	*<code>VBox</code> 是一个垂直布局容器类。
+	*<code>HBox</code> 是一个水平布局容器类。
 	*/
 	//class laya.ui.HBox extends laya.ui.LayoutBox
 	var HBox=(function(_super){
