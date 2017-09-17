@@ -10,7 +10,7 @@
 
 
 
-// 创建舞台，默认背景是黑色
+创建舞台，默认背景是黑色
 Laya.init(600, 400);
 
 
@@ -23,15 +23,6 @@ txt.strokeColor = "#FFFFFF";
 txt.bold = true;
 txt.pos(60,100);
 
-
 Laya.stage.bgColor = '#23238E';  
 Laya.stage.addChild(txt);
 
-
-// class MyStage{
-
-// 	init(){
-
-// 	}
-
-// }
